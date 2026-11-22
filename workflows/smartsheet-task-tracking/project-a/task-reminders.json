@@ -1,0 +1,286 @@
+{
+  "name": "Task Reminders - Project A",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "triggerAtDay": [
+                1,
+                2,
+                4,
+                3,
+                5
+              ],
+              "triggerAtHour": 14
+            },
+            {
+              "field": "weeks",
+              "triggerAtDay": [
+                1,
+                2,
+                3,
+                4,
+                5
+              ],
+              "triggerAtHour": 21
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -208,
+        160
+      ],
+      "id": "607103e8-d573-440d-b03c-140b4610fe5f",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM public.\"task_master_project_a\"",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        0,
+        160
+      ],
+      "id": "0fb9392d-e4f0-4cd4-8f1f-d2937a06a270",
+      "name": "Fetch Latest Data",
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "ddc241d8-4320-4062-adfb-f10cb836e398",
+              "leftValue": "={{ $now.hour }}",
+              "rightValue": "=21",
+              "operator": {
+                "type": "dateTime",
+                "operation": "afterOrEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        624,
+        160
+      ],
+      "id": "0709d330-4285-42c9-9016-f66cebe625c2",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "resource": "messages-api",
+        "instanceName": "whatsapp_1",
+        "remoteJid": "={{ $json.phone }}",
+        "messageText": "=*🌙 EVENING PROGRESS WRAP-UP* 📊 \n*Date:* {{ $today.format('dd/MM/yyyy') }}  \n\n━━━━━━━━━━━━━ \n\n*TEAM MEMBER:* {{ $json.name }}\n📝 *Total Tasks:* {{ $json.totalAssigned }} \n🚀 *Active:* {{ $json.activeCount }} | 💤 *Pending:* {{ $json.pendingCount }} \n\n━━━━━━━━━━━━━  \n\n*DETAILED TASK LIST:*\n{{ $json.taskList }}  \n\n━━━━━━━━━━━━━  \n\n*ACTION REQUIRED:* *Almost time to head home!* 🏠 \n\nPlease share a quick update so we can celebrate the wins and clear any blockers for tomorrow.\n\n*HOW TO REPLY:* Copy and fill this line for each task:\n\n\"Task with [ID] [XX]% completed... [Your update]\"\n\n_Example: Task with Tid0001 85% completed... Finished the internal cabling._",
+        "options_message": {}
+      },
+      "type": "n8n-nodes-evolution-api-en.evolutionApi",
+      "typeVersion": 1,
+      "position": [
+        928,
+        80
+      ],
+      "id": "9e583e5c-6eac-416d-a789-b9a19f544d12",
+      "name": "Evening Text",
+      "credentials": {
+        "evolutionApi": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL",
+          "name": "Evolution account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "messages-api",
+        "instanceName": "whatsapp_1",
+        "remoteJid": "={{ $json.phone }}",
+        "messageText": "=*DAILY TASK & IMPACT AUDIT* 📊 \n*Date:* {{ $today.format('dd/MM/yyyy') }}  \n\n━━━━━━━━━━━━━━━━━━━━ \n\n*EMPLOYEE SUMMARY:* \n📝 *Total Tasks:* {{ $json.totalAssigned }} \n🚀 *Active:* {{ $json.activeCount }} | 💤 *Pending:* {{ $json.pendingCount }} \n\n━━━━━━━━━━━━━━━━━━━━  \n\n*DETAILED TASK LIST:* {{ $json.taskList }}  \n\n━━━━━━━━━━━━━━━━━━━━  \n\n*ACTION REQUIRED:* \n*Time to go home soon!* 🏠 Please update your progress:  \n\n\"Task with [ID] [XX]% completed... [Comments]\"  _\n\nExample: Task with Tid0003 25% completed... finished structural review._",
+        "options_message": {}
+      },
+      "type": "n8n-nodes-evolution-api-en.evolutionApi",
+      "typeVersion": 1,
+      "position": [
+        928,
+        240
+      ],
+      "id": "8d8a8782-4654-4608-899b-96a3066c39b5",
+      "name": "Morning text",
+      "credentials": {
+        "evolutionApi": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL",
+          "name": "Evolution account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "/**\n * PROJECT IMPACT ANALYSIS ENGINE - v8.14\n * REMOVED: Baseline dependency.\n * CALCULATION: Delay is now based on Projected Date vs. Finish Date.\n */\n\nconst allRows = $input.all(); \nconst directory = $(\"Fetched Directory\").all(); \n\nconst filteredOutput = [];\nconst today = new Date();\n\n// Create the Directory Lookup Map\nconst phoneDirectory = {};\ndirectory.forEach(item => {\n    const nameData = item.json[\"Assigned to\"] || item.json[\"Assigned To\"] || \"\";\n    const name = String(nameData).trim().toLowerCase();\n    const phone = item.json[\"Phone no\"] !== undefined ? String(item.json[\"Phone no\"]).trim() : \"\";\n    if (name && phone) phoneDirectory[name] = phone;\n});\n\nfor (const item of allRows) {\n    const row = item.json;\n    const pctKey = row[\"Percentage Complete\"] !== undefined ? \"Percentage Complete\" : \"percentage complete\";\n    \n    if (row[pctKey] !== undefined) {\n        let val = row[pctKey];\n        let pctNum = (typeof val === 'string') ? parseFloat(val.replace('%', '').trim()) : (val <= 1 ? val * 100 : val);\n\n        if (pctNum >= 100) continue; \n\n        const formatDate = (dateVal) => {\n            if (!dateVal || dateVal === \"null\" || dateVal === null) return \"TBD\";\n            const d = new Date(dateVal);\n            return isNaN(d) ? \"TBD\" : `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;\n        };\n\n        // Use Actual Start and Finish instead of Baselines\n        const as = row[\"Start\"] ? new Date(row[\"Start\"]) : null;\n        const af = row[\"Finish\"] ? new Date(row[\"Finish\"]) : null;\n        \n        const daysSinceStart = as ? Math.max(1, Math.floor((today - as) / 86400000)) : 1;\n        const dailyVelocity = pctNum / daysSinceStart; \n        const remainingPct = 100 - pctNum;\n        const daysToFinish = dailyVelocity > 0 ? (remainingPct / dailyVelocity) : 0;\n        const projectedDate = new Date(today.getTime() + (daysToFinish * 86400000));\n        \n        // Delay is now: How much past the 'Finish' date are we projected to go?\n        let totalProjectedDelay = (af && projectedDate > af) ? Math.round((projectedDate - af) / 86400000) : 0;\n\n        let statusLabel = (pctNum < 100 && af < today) ? \"🔴 OVERDUE\" : \"🚀 ACTIVE\";\n        if (as > today && pctNum === 0) {\n            statusLabel = \"📅 FUTURE\";\n            totalProjectedDelay = 0;\n        }\n\n        const rawNames = row[\"Assigned To\"] || row[\"assigned to\"] || \"\";\n        const nameList = String(rawNames).split(',').map(n => n.trim());\n        \n        let phoneList = [];\n        let validNames = [];\n\n        for (const name of nameList) {\n            if (!name || name === \"null\") continue;\n            const empLower = name.toLowerCase();\n            const foundPhone = phoneDirectory[empLower];\n\n            if (foundPhone) {\n                const cleanNumber = String(foundPhone).replace(/\\D/g, '');\n                phoneList.push(cleanNumber + \"@s.whatsapp.net\");\n                validNames.push(name);\n            }\n        }\n\n        if (phoneList.length > 0) {\n            filteredOutput.push({\n                json: {\n                    ...row, \n                    \"Percentage_Complete_Clean\": pctNum + \"%\",\n                    \"Clean_Phone\": phoneList.join(','), \n                    \"Projected_Delay\": totalProjectedDelay,\n                    \"Forecasted_Finish\": formatDate(projectedDate),\n                    \"Simple_Pace\": totalProjectedDelay > 5 ? \"🔴 CRITICAL SLOWDOWN\" : (totalProjectedDelay > 0 ? \"🟡 SLIGHTLY BEHIND\" : \"🟢 ON TRACK\"),\n                    \"Impact_Score\": (row[\"Critical\"] === true || totalProjectedDelay > 7) ? \"High\" : \"Medium\",\n                    \"Display_Finish\": formatDate(af),\n                    \"Display_Start\": formatDate(as),\n                    \"Comments_Clean\": (!row[\"Comments\"] || row[\"Comments\"] === \"null\") ? \"No feedback yet\" : row[\"Comments\"],\n                    \"Status_Clean\": statusLabel,\n                    \"Assigned_Lead\": validNames.join(', ')\n                }\n            });\n        }\n    }\n}\n\nreturn filteredOutput;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        208,
+        160
+      ],
+      "id": "7501f55e-a4ba-41f0-8caf-386aef43d5c8",
+      "name": "Extract Tasks"
+    },
+    {
+      "parameters": {
+        "jsCode": "/**\n * EMPLOYEE AGGREGATOR v8.5\n * FIX: Splits comma-separated Clean_Phone strings to ensure individual messaging.\n * GOAL: One output item per unique phone number.\n */\nconst allRows = $input.all();\nconst groupedByEmployee = {};\nconst today = new Date();\nconst next48Hours = new Date();\nnext48Hours.setDate(today.getDate() + 2);\n\nfor (const item of allRows) {\n    const row = item.json;\n    \n    // --- 🟢 FIX: SPLIT MULTIPLE PHONES INTO INDIVIDUALS 🟢 ---\n    const rawPhones = String(row[\"Clean_Phone\"] || \"\");\n    if (!rawPhones || rawPhones === \"MANUAL_CHECK_NEEDED\") continue;\n\n    // Split \"923...,923...\" into an array of individual JIDs\n    const individualPhones = rawPhones.split(',').map(p => p.trim());\n\n    for (const phone of individualPhones) {\n        if (!phone) continue;\n\n        // Initialize group for this specific phone number\n        if (!groupedByEmployee[phone]) {\n            groupedByEmployee[phone] = {\n                phone: phone,\n                name: (row[\"Assigned_Lead\"] || \"Team Member\").split(',')[0].trim(),\n                totalAssigned: 0,\n                activeCount: 0,\n                pendingCount: 0,\n                taskList: \"\" \n            };\n        }\n\n        const emp = groupedByEmployee[phone];\n        emp.totalAssigned++;\n\n        // 1. Progress Stats\n        const pctNum = parseFloat(String(row[\"Percentage_Complete_Clean\"]).replace('%', '')) || 0;\n        if (pctNum === 0) emp.pendingCount++;\n        else if (pctNum > 0 && pctNum < 100) emp.activeCount++;\n\n        // 2. Date Handling\n        let as = new Date(row[\"Start\"]);\n        let af = new Date(row[\"Finish\"]);\n        let actualStart = (as < af) ? as : af;\n        let actualFinish = (as < af) ? af : as;\n\n        // 3. Status Logic\n        let statusLabel = \"\";\n        if (pctNum < 100 && actualFinish < today) {\n            statusLabel = \"🔴 OVERDUE\";\n        } else if (pctNum < 100 && actualFinish <= next48Hours && actualFinish >= today) {\n            statusLabel = \"⏳ DUE SOON\";\n        } else if (actualStart > today && pctNum === 0) {\n            statusLabel = \"📅 FUTURE\";\n        } else {\n            statusLabel = \"🚀 ACTIVE\";\n        }\n\n        // 4. Formatting Dates for Display\n        const fDate = (d) => (d && !isNaN(d)) ? d.toISOString().split('T')[0] : \"TBD\";\n        const aStart = fDate(actualStart);\n        const aFinish = fDate(actualFinish);\n\n        const slip = row[\"Slippage_Days\"] || 0;\n        const comment = (!row[\"Comments_Clean\"] || row[\"Comments_Clean\"] === \"null\") ? \"No feedback\" : row[\"Comments_Clean\"];\n        \n        // 5. Task Entry\n        emp.taskList += `\\n${statusLabel} | *${row[\"Task id\"] || 'N/A'}*: ${row[\"Task Name\"]}\\n` +\n                        `    🏃 *Actual:* ${aStart} to ${aFinish}\\n` +\n                        `    📊 Progress: ${row[\"Percentage_Complete_Clean\"]} | 🚩 Slippage: ${slip}d\\n` +\n                        `    💬 Last comment: \"${comment}\"\\n`;\n    }\n}\n\n// Return as individual items so n8n triggers the WhatsApp node once per person\nreturn Object.values(groupedByEmployee).map(emp => ({ json: emp }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        416,
+        160
+      ],
+      "id": "3bdab36b-c172-44cf-82a9-a9e56817c21f",
+      "name": "Aggregate Node"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "https://docs.google.com/spreadsheets/d/YOUR_SPREADSHEET_ID/edit",
+          "mode": "url"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Project A Phone Directory",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        0,
+        0
+      ],
+      "id": "ec06108e-f0ae-4443-a659-77fa2fb6699f",
+      "name": "Fetched Directory",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL",
+          "name": "Google Sheets account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Fetch Latest Data",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Fetched Directory",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Latest Data": {
+      "main": [
+        [
+          {
+            "node": "Extract Tasks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Evening Text",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Morning text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Tasks": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Node",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate Node": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetched Directory": {
+      "main": [
+        [
+          {
+            "node": "Extract Tasks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "tags": []
+}

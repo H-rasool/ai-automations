@@ -1,0 +1,6 @@
+# Normalise line endings so diffs stay clean regardless of the OS used to edit
+* text=auto eol=lf
+*.json text eol=lf
+*.sh text eol=lf
+*.png binary
+*.jpg binary

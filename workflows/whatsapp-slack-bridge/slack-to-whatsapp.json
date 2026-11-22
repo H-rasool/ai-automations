@@ -1,0 +1,645 @@
+{
+  "name": "Slack to WhatsApp Bridge",
+  "nodes": [
+    {
+      "parameters": {
+        "trigger": [
+          "message"
+        ],
+        "watchWorkspace": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.slackTrigger",
+      "typeVersion": 1,
+      "position": [
+        -448,
+        -224
+      ],
+      "id": "24fac923-7e1d-4b7e-97c0-fd08db737d08",
+      "name": "Slack Trigger",
+      "webhookId": "91890dc5-dd03-55f1-a30b-d60c89a200c8",
+      "credentials": {
+        "slackApi": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL",
+          "name": "Slack account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "f076ba58-a7e2-4868-90b0-124020f9da8f",
+              "leftValue": "={{ $json.bot_id }}",
+              "rightValue": "U0ACKR1PTSR",
+              "operator": {
+                "type": "string",
+                "operation": "empty",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "c1e3ec93-8a97-4d93-82d3-ecc49674b561",
+              "leftValue": "={{ $json.user }}",
+              "rightValue": "UOACKR1PTSR",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            },
+            {
+              "id": "99121d02-f577-4f32-acc5-5382d77a0404",
+              "leftValue": "={{ $json.event.subtype }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "empty",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "5acd2d3a-e2ae-4ab0-b0f3-69463e5f2ec9",
+              "leftValue": "={{ $json.event.message.bot_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "empty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -304,
+        -16
+      ],
+      "id": "383299cc-cd63-4844-bb13-d61d27c88afe",
+      "name": "Is Human ?"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// PRODUCTION MESSAGE PARSER - RUN ONCE FOR EACH ITEM MODE\nconst SLACK_TO_WHATSAPP = {\n  \"C0EXAMPL001\": \"120363000000000008@g.us\",\n  \"C0EXAMPL003\": \"120363000000000003@g.us\",\n  \"C0EXAMPL004\": \"120363000000000014@g.us\",\n  \"C0EXAMPL002\": \"120363000000000001@g.us\",\n  \"C0EXAMPL005\": \"120363000000000010@g.us\",\n  \"C0EXAMPL006\": \"120363000000000004@g.us\",\n  \"C0EXAMPL007\": \"120363000000000006@g.us\",\n  \"C0EXAMPL010\": \"120363000000000007@g.us\",\n  \"C0EXAMPL011\": \"120363000000000011@g.us\",\n  \"C0EXAMPL008\": \"120363000000000012@g.us\",\n  \"C0EXAMPL015\": \"120363000000000009@g.us\",\n  \"C0EXAMPL014\": \"120363000000000015@g.us\",\n  \"C0EXAMPL012\": \"120363000000000002@g.us\",\n  \"C0EXAMPL016\": \"120363000000000016@g.us\",\n  \"C0EXAMPL013\": \"120363000000000005@g.us\"\n\n};\n\n// Access the current item directly\nconst file = $json.files; \nconst channel = $json.channel;\n\nconst targetId = SLACK_TO_WHATSAPP[channel];\nif (!targetId || !file) return [];\n\nconst sender = $json.real_name || \"Slack User\";\nconst message = $json.text || \"\";\n\n// Detect Media Type\nconst mime = file.mimetype || \"\"; \nlet mediaType = \"document\";\nif (mime.startsWith('image/')) mediaType = \"image\";\nelse if (mime.startsWith('video/')) mediaType = \"video\";\nelse if (mime.startsWith('audio/')) mediaType = \"audio\";\n\nreturn {\n  json: {\n    remoteJid: targetId,\n    isMedia: true,\n    downloadUrl: file.url_private_download || \"\",\n    fileName: file.name || \"attachment\",\n    mediaType: mediaType,\n    mimeType: mime,\n    caption: `*${sender}*: ${message}`\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        800,
+        -240
+      ],
+      "id": "8feedba7-6822-4799-8bb2-2016e66ea4dc",
+      "name": "Message Parser"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://evolution_api:8080/message/sendText/wa-slack-bridge",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "number",
+              "value": "={{ ({\"C0EXAMPL001\":\"120363000000000008@g.us\",\"C0EXAMPL003\":\"120363000000000003@g.us\",\"C0EXAMPL004\":\"120363000000000014@g.us\",\"C0EXAMPL002\":\"120363000000000001@g.us\",\"C0EXAMPL005\":\"120363000000000010@g.us\",\"C0EXAMPL007\":\"120363000000000006@g.us\",\"C0EXAMPL008\":\"120363000000000012@g.us\",\"C0EXAMPL010\":\"120363000000000007@g.us\",\"C0EXAMPL011\":\"120363000000000011@g.us\",\"C0EXAMPL013\":\"120363000000000005@g.us\",\"C0EXAMPL014\":\"120363000000000015@g.us\",\"C0EXAMPL012\":\"120363000000000002@g.us\",\"C0EXAMPL016\":\"120363000000000016@g.us\",\"C0EXAMPL015\":\"120363000000000009@g.us\",\"C0EXAMPL006\":\"120363000000000004@g.us\"})[$('Slack Trigger').item.json.channel] }}"
+            },
+            {
+              "name": "text",
+              "value": "=*{{ $node[\"Get a user's profile\"].json[\"real_name\"] }}*: {{ $node[\"Slack Trigger\"].json[\"text\"] }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        896,
+        96
+      ],
+      "id": "7176b357-3af2-4c39-88d0-2ac568b65f0c",
+      "name": "Send to WhatsApp",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        -96,
+        240
+      ],
+      "id": "020b354a-ef69-42c7-ab5a-1af9642804fc",
+      "name": "No Operation, do nothing"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "92629638-3ecc-4784-808d-20f8e1ec7015",
+              "leftValue": "={{ $json.isMedia }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        960,
+        -240
+      ],
+      "id": "2d233f67-691a-4280-96e5-d70af7e67124",
+      "name": "If Media"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://evolution_api:8080/message/sendMedia/wa-slack-bridge",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "number",
+              "value": "={{ $json.remoteJid }}"
+            },
+            {
+              "name": "mediatype",
+              "value": "={{ $json.mediaType }}"
+            },
+            {
+              "name": "mimetype",
+              "value": "={{ $json.mimeType }}"
+            },
+            {
+              "name": "caption",
+              "value": "={{ $json.caption }}"
+            },
+            {
+              "name": "media",
+              "value": "={{ $json.base64 }}"
+            },
+            {
+              "name": "fileName",
+              "value": "={{ $json.fileName }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1424,
+        -320
+      ],
+      "id": "3573531c-2f5e-4729-b34a-c46721d8638e",
+      "name": "Send Media",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.downloadUrl }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "redirect": {
+            "redirect": {}
+          },
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "file"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1136,
+        -320
+      ],
+      "id": "26a7fbf1-402a-41ca-99dc-d92a778dfb4e",
+      "name": "Get Media",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL",
+          "name": "Slack Download Auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// PRODUCTION MEDIA PARSER - STABLE BINARY CONVERSION\nconst items = $input.all();\nconst returnData = [];\n\nfor (let i = 0; i < items.length; i++) {\n  try {\n    // 1. Check if binary data exists\n    const binaryData = items[i].binary;\n    if (!binaryData || !binaryData.data) {\n      continue; // Skip if Get Media didn't provide a file\n    }\n\n    // 2. Read binary buffer\n    const binaryBuffer = await this.helpers.getBinaryDataBuffer(i, 'data');\n    \n    // 3. Merge metadata with Base64\n    returnData.push({\n      json: {\n        ...items[i].json, // Keep remoteJid, mediaType, etc.\n        base64: binaryBuffer.toString('base64')\n      }\n    });\n  } catch (error) {\n    // Handle specific binary errors\n    continue;\n  }\n}\n\nreturn returnData;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1280,
+        -320
+      ],
+      "id": "5a932075-534e-4031-aba9-3baec136b29b",
+      "name": "Media Parser"
+    },
+    {
+      "parameters": {
+        "resource": "user",
+        "operation": "getProfile",
+        "user": {
+          "__rl": true,
+          "value": "={{ $('Slack Trigger').first().json.user }}",
+          "mode": "id"
+        }
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.4,
+      "position": [
+        -96,
+        -32
+      ],
+      "id": "e7df9bef-1247-41e3-ae96-c8c7d972c7c2",
+      "name": "Get a user's profile",
+      "webhookId": "f786d204-6df4-57ed-972c-5ef86d07efe6",
+      "credentials": {
+        "slackApi": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL",
+          "name": "Slack account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "files",
+        "include": "allOtherFields",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        640,
+        -240
+      ],
+      "id": "a82279c8-83ae-4465-9335-619e04f84a57",
+      "name": "Split Out"
+    },
+    {
+      "parameters": {
+        "amount": 3
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1568,
+        -320
+      ],
+      "id": "dc22e99f-533f-4cf1-bcd0-51011ab9ded8",
+      "name": "Wait",
+      "webhookId": "21b62214-f324-5ed9-8ae9-2ea6aad853d3"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "97fa03db-3616-410e-b8f7-49669f17d8a9",
+              "leftValue": "={{ $('Slack Trigger').item.json.files ? $('Slack Trigger').item.json.files.length : 0 }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        384,
+        -48
+      ],
+      "id": "fd6bdd05-fc9d-4075-8d9d-97d821357e8f",
+      "name": "If Mutilple Attachments"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        496,
+        -240
+      ],
+      "id": "4b0a2b92-b093-4456-936e-1285815d5d8c",
+      "name": "Merge"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1152,
+        -80
+      ],
+      "id": "4e9cb989-264f-41a1-87e5-e2f0100bfba6",
+      "name": "No Operation, do nothing1"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "1e03ac91-fcf9-428a-9706-fe7ad2db45dc",
+              "leftValue": "={{ $json.real_name }}",
+              "rightValue": "WhatsApp Bridge",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        128,
+        -32
+      ],
+      "id": "e1ec3a30-a267-4614-9aea-684992b4ea89",
+      "name": "Name Block"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "e6f3b091-f33c-49d0-918a-b79c3691a451",
+              "leftValue": "={{ $('Slack Trigger').first().json.text }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        592,
+        112
+      ],
+      "id": "9b3d165b-466f-4ce1-9929-8281b10deeb1",
+      "name": "Empty Shield"
+    }
+  ],
+  "connections": {
+    "Slack Trigger": {
+      "main": [
+        [
+          {
+            "node": "Is Human ?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Is Human ?": {
+      "main": [
+        [
+          {
+            "node": "Get a user's profile",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No Operation, do nothing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Message Parser": {
+      "main": [
+        [
+          {
+            "node": "If Media",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Media": {
+      "main": [
+        [
+          {
+            "node": "Get Media",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No Operation, do nothing1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Media": {
+      "main": [
+        [
+          {
+            "node": "Media Parser",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Media Parser": {
+      "main": [
+        [
+          {
+            "node": "Send Media",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get a user's profile": {
+      "main": [
+        [
+          {
+            "node": "Name Block",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Out": {
+      "main": [
+        [
+          {
+            "node": "Message Parser",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Media": {
+      "main": [
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Mutilple Attachments": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Empty Shield",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Split Out",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Name Block": {
+      "main": [
+        [
+          {
+            "node": "If Mutilple Attachments",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Empty Shield": {
+      "main": [
+        [
+          {
+            "node": "Send to WhatsApp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false,
+    "timeSavedMode": "fixed",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "tags": []
+}

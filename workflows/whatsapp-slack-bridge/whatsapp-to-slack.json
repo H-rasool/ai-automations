@@ -1,0 +1,450 @@
+{
+  "name": "WhatsApp to Slack Bridge",
+  "nodes": [
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "={{ $json.slackChannel }}",
+          "mode": "name"
+        },
+        "text": "=*{{ $json.senderName }}*: {{ $json.messageText }}",
+        "otherOptions": {
+          "includeLinkToWorkflow": false
+        }
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.4,
+      "position": [
+        528,
+        80
+      ],
+      "id": "80af5377-3549-460a-b9ff-d95901a99c3a",
+      "name": "Send a message",
+      "webhookId": "75561907-d85c-58ec-971d-f407a369ffb9",
+      "credentials": {
+        "slackApi": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL",
+          "name": "Slack account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "file",
+        "options": {
+          "channelId": "={{ $json.slackChannel }}",
+          "initialComment": "=*{{ $json.senderName }}*: {{ $json.messageText }}"
+        }
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.4,
+      "position": [
+        512,
+        -144
+      ],
+      "id": "e93e7e28-b81e-4e74-857c-3b2a413ae3eb",
+      "name": "Upload a file",
+      "webhookId": "5eff1453-7b14-5d29-aadc-4bfddf030db3",
+      "credentials": {
+        "slackApi": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL",
+          "name": "Slack account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "whatsapp-to-slack",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -816,
+        128
+      ],
+      "id": "616a4c24-25b7-4974-8597-359844fcb757",
+      "name": "WhatsApp Webhook",
+      "webhookId": "54146a64-bc37-555c-be7d-25f063469deb"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "d10b4926-9369-423e-9cc2-f49ae19352c1",
+              "leftValue": "={{ $json.isMedia }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        304,
+        -32
+      ],
+      "id": "1ee15bb2-b84e-492d-aecf-27dc66a979c3",
+      "name": "If Media"
+    },
+    {
+      "parameters": {
+        "jsCode": "// --- PRODUCTION CODE: ALL GROUPS ENABLED ---\n\nconst body = $json.body || {};\nconst eventType = body.event;\nlet data = body.data;\n\n// 1. DATA NORMALIZATION\nif (Array.isArray(data)) {\n    data = data[0];\n}\n\n// 2. SAFETY CHECKS\nif (!data) return [];\n\n// CRITICAL SAFETY SHIELD: Ignore messages sent by the bot itself\nif (data.key && data.key.fromMe) return []; \n\n// CRITICAL SAFETY SHIELD: Ignore emoji reactions or message updates (prevents empty text errors)\nif (data.message?.reactionMessage || eventType === 'messages.update') return [];\n// ---------------------------------\n\n// CRITICAL SAFETY SHIELD: Ignore messages sent by the bot itself\nif (data.key && data.key.fromMe) return []; \n// ---------------------------------------\n\n// 3. RECURSIVE SEARCH FUNCTION\nfunction findBase64Recursive(obj) {\n    if (!obj || typeof obj !== 'object') return null;\n    if (obj.base64) return obj.base64;\n    \n    for (const key in obj) {\n        if (Object.prototype.hasOwnProperty.call(obj, key)) {\n             if (typeof obj[key] === 'object') {\n                 const found = findBase64Recursive(obj[key]);\n                 if (found) return found;\n             }\n        }\n    }\n    return null;\n}\n\n// 4. EXECUTE SEARCH\nlet rawBase64 = findBase64Recursive(data);\n\n// Fallback: Look for thumbnail if full file missing\nif (!rawBase64) {\n    const findThumb = (obj) => {\n        if (!obj || typeof obj !== 'object') return null;\n        if (obj.jpegThumbnail) return obj.jpegThumbnail;\n        for (const k in obj) {\n            if (typeof obj[k] === 'object') {\n                const f = findThumb(obj[k]);\n                if (f) return f;\n            }\n        }\n        return null;\n    };\n    rawBase64 = findThumb(data);\n}\n\n// 5. SANITIZE DATA\nif (rawBase64 && typeof rawBase64 === 'object' && rawBase64.data) {\n    rawBase64 = Buffer.from(rawBase64.data).toString('base64');\n}\n\n// 6. EXTRACT MESSAGE DETAILS\nconst messageContent = data.message || {};\nconst senderName = data.pushName || (data.key ? data.key.participant : \"WhatsApp User\") || \"Unknown\";\nconst waGroupId = data.key ? data.key.remoteJid : \"\";\n\n// --- 7. CONFIGURATION: FULL CHANNEL MAP ---\nconst CHANNEL_MAP = {\n  // Test group\n  \"120363000000000008@g.us\": \"C0EXAMPL001\", \n\n  // Team group 1\n  \"120363000000000003@g.us\": \"C0EXAMPL003\",\n\n  // Team group 2\n  \"120363000000000014@g.us\": \"C0EXAMPL004\",\n\n  // Team group 3\n  \"120363000000000001@g.us\": \"C0EXAMPL002\",\n\n  // Team group 4\n  \"120363000000000010@g.us\": \"C0EXAMPL005\",\n\n  // Team group 5\n  \"120363000000000004@g.us\": \"C0EXAMPL006\",\n\n  // Team group 6\n  \"120363000000000006@g.us\": \"C0EXAMPL007\",\n\n  // Team group 7\n  \"120363000000000012@g.us\": \"C0EXAMPL008\",\n\n  // Team group 8\n  \"120363000000000007@g.us\": \"C0EXAMPL010\",\n\n  // Team group 9\n  \"120363000000000011@g.us\": \"C0EXAMPL011\",\n\n  // Team group 10\n  \"120363000000000017@g.us\": \"C0EXAMPL009\",\n\n  // Team group 11\n  \"120363000000000005@g.us\": \"C0EXAMPL013\",\n\n  // Team group 12\n  \"120363000000000009@g.us\": \"C0EXAMPL015\",\n\n  // Team group 13\n  \"120363000000000015@g.us\": \"C0EXAMPL014\",\n\n  // Team group 14\n  \"120363000000000002@g.us\": \"C0EXAMPL012\",\n\n  // Team group 15\n  \"120363000000000016@g.us\": \"C0EXAMPL016\",\n\n  // Engineering test group (EOD summary logging only)\n  \"120363000000000013@g.us\": \"SUMMARY_ONLY\"\n};\n\nconst targetChannelId = CHANNEL_MAP[waGroupId];\n\n// FILTER: If message is from a group NOT in this list, stop.\nif (!targetChannelId) return [];\n\n// 8. DETERMINE MEDIA TYPE & TEXT EXTRACTION\nlet messageText = \"\";\nlet fileName = \"file.bin\";\nlet mimeType = \"application/octet-stream\";\nlet isMedia = false;\n\nif (messageContent.videoMessage) {\n    isMedia = true;\n    fileName = \"video.mp4\";\n    mimeType = \"video/mp4\";\n    messageText = messageContent.videoMessage.caption || \"🎥 Video\";\n} else if (messageContent.imageMessage) {\n    isMedia = true;\n    fileName = \"image.jpg\";\n    mimeType = \"image/jpeg\";\n    messageText = messageContent.imageMessage.caption || \"📷 Image\";\n} else if (messageContent.audioMessage) {\n    isMedia = true;\n    fileName = \"audio.ogg\";\n    mimeType = \"audio/ogg\";\n    messageText = \"🎤 Voice Note\";\n} else if (messageContent.documentMessage) {\n    isMedia = true;\n    fileName = messageContent.documentMessage.fileName || \"doc.pdf\";\n    mimeType = messageContent.documentMessage.mimetype || \"application/pdf\";\n    messageText = messageContent.documentMessage.caption || \"📄 Document\";\n} else {\n    // TEXT & LINK HANDLING: Checks for standard conversation OR extended links/previews\n    messageText = messageContent.conversation || messageContent.extendedTextMessage?.text || \"\";\n}\n\n// 9. FINAL VALIDATION & EMPTY MESSAGE SHIELD\nif (isMedia && !rawBase64) {\n    messageText += \"\\n(⚠️ Error: Media not downloaded)\";\n    isMedia = false; \n}\n\n// CRITICAL SHIELD: If there is no media AND the extracted text is empty, stop the workflow.\n// This prevents empty \"WhatsApp Bridge\" messages from looping into Slack.\nif (!messageText && !isMedia) {\n    return []; \n}\n\n// 10. OUTPUT GENERATION\nreturn {\n  json: {\n    slackChannel: targetChannelId,\n    messageText: messageText,\n    senderName: senderName,\n    isMedia: isMedia,\n    waGroupId: waGroupId\n  },\n  binary: (isMedia && rawBase64) ? {\n    data: {\n      data: rawBase64,\n      mimeType: mimeType,\n      fileExtension: fileName.split('.').pop(),\n      fileName: fileName\n    }\n  } : undefined\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -96,
+        128
+      ],
+      "id": "06c99c5f-4341-40c3-bc98-8b8b70ee27c1",
+      "name": "Message Parser"
+    },
+    {
+      "parameters": {
+        "jsCode": "// PRODUCTION DUPLICATE CHECK - NO EXTERNAL MODULES REQUIRED\nconst msgId = $json.body?.data?.key?.id;\nif (!msgId) return { json: { isDuplicate: false } };\n\n// Use n8n's internal memory which is faster than staticData but local to this process\n// We will also use a 'Respond to Webhook' node after this to kill the loop\nconst staticData = $getWorkflowStaticData('global');\n\nif (!staticData.seenIds) {\n    staticData.seenIds = {};\n}\n\nif (staticData.seenIds[msgId]) {\n    return { json: { isDuplicate: true, msgId: msgId } };\n}\n\nstaticData.seenIds[msgId] = new Date().getTime();\n\nreturn { \n    json: { \n        isDuplicate: false, \n        msgId: msgId, \n        ...$json \n    } \n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -608,
+        128
+      ],
+      "id": "ec114cff-0c1d-4fe2-ad4f-2bfe14908925",
+      "name": "Check Duplicate"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "bbd45161-2fa0-43bf-acd5-c085315b6cdc",
+              "leftValue": "={{ $json.isDuplicate }}",
+              "rightValue": "false",
+              "operator": {
+                "type": "boolean",
+                "operation": "false",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.3,
+      "position": [
+        -272,
+        128
+      ],
+      "id": "033436db-890c-40b7-a248-d84b29626de3",
+      "name": "Filter"
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "OK",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        -432,
+        128
+      ],
+      "id": "0fd32b7f-0aa2-40eb-8391-51eec8816a3f",
+      "name": "Respond to Webhook"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "=={{ $json.slackChannel }}",
+                    "rightValue": "SUMMARY_ONLY",
+                    "operator": {
+                      "type": "string",
+                      "operation": "notContains"
+                    },
+                    "id": "7b885e23-1489-405c-ba4a-d5f978692451"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "b6c8aecc-b9cd-404a-80e4-6d238e07b989",
+                    "leftValue": "=={{ $json.slackChannel }}",
+                    "rightValue": "SUMMARY_ONLY",
+                    "operator": {
+                      "type": "string",
+                      "operation": "contains"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        96,
+        128
+      ],
+      "id": "20a6d985-41e4-4d9d-b60c-d817736fec68",
+      "name": "Route by Channel"
+    },
+    {
+      "parameters": {
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "whatsapp_daily_logs",
+          "mode": "list",
+          "cachedResultName": "whatsapp_daily_logs"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "group_id": "=={{ $json.waGroupId }}",
+            "sender_name": "=={{ $json.senderName }}",
+            "message_text": "=={{ $json.messageText }}"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "group_id",
+              "displayName": "group_id",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "sender_name",
+              "displayName": "sender_name",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "message_text",
+              "displayName": "message_text",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "processed",
+              "displayName": "processed",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "boolean",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "created_at",
+              "displayName": "created_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        320,
+        288
+      ],
+      "id": "5272d81a-f833-429c-9008-8c92bbf01eae",
+      "name": "Insert rows in a table",
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL",
+          "name": "Postgres account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "WhatsApp Webhook": {
+      "main": [
+        [
+          {
+            "node": "Check Duplicate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Media": {
+      "main": [
+        [
+          {
+            "node": "Upload a file",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send a message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Message Parser": {
+      "main": [
+        [
+          {
+            "node": "Route by Channel",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Duplicate": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter": {
+      "main": [
+        [
+          {
+            "node": "Message Parser",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Respond to Webhook": {
+      "main": [
+        [
+          {
+            "node": "Filter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by Channel": {
+      "main": [
+        [
+          {
+            "node": "If Media",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Insert rows in a table",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false,
+    "timeSavedMode": "fixed",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "tags": []
+}

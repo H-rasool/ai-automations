@@ -1,0 +1,218 @@
+{
+  "name": "EOD Chat Summarizer (Gemini)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 6,
+              "triggerAtMinute": 1
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -512,
+        0
+      ],
+      "id": "81754501-cbb7-4199-95cb-9f6f75d73241",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, sender_name, message_text \nFROM whatsapp_daily_logs \nWHERE group_id = '=120363000000000013@g.us' \nAND processed = FALSE\nORDER BY created_at ASC;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -304,
+        0
+      ],
+      "id": "687d3a8b-2110-4d2c-8bcb-ca0e9f7dd81e",
+      "name": "The Fetcher",
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nif (!items || items.length === 0) return []; // Graceful halt: no chats today.\n\nlet transcript = \"--- START OF DAILY CHAT LOG ---\\n\";\nlet ids = [];\n\nitems.forEach(item => {\n    const msg = item.json.message_text;\n    // Ignore empty lines\n    if (msg && msg.trim() !== \"\") {\n        transcript += `[${item.json.sender_name}]: ${msg}\\n`;\n    }\n    ids.push(item.json.id);\n});\n\ntranscript += \"--- END OF DAILY CHAT LOG ---\";\n\nreturn { \n    json: { \n        transcript: transcript,\n        idsList: ids.join(',') // Creates a string like \"1,2,3\" for the DB update\n    } \n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -96,
+        0
+      ],
+      "id": "eb2b1455-5520-4533-920b-41b0c8159451",
+      "name": "Formatter & Gateway"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "models/gemini-2.5-flash-lite",
+          "mode": "list",
+          "cachedResultName": "models/gemini-2.5-flash-lite"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "=You are an expert Engineering Assistant. Your task is to analyze today's raw WhatsApp chat transcript from the \"Engineering Benchtop Testing\" team and generate a structured, professional end-of-day summary.\n\nWhen a user posts a caption like \"Thermal Summary at 130kW\", infer that they shared a data table regarding that test.\n\nYour output MUST follow this format. Use WhatsApp markdown (asterisks * for bold). \n\n*📝 Executive TL;DR*\n(Provide a 1-3 sentence overview of the day's activity. If it was a light day with only one or two messages, just summarize that specific context).\n\n*📊 Test Results & Data Logged*\n(Bullet points detailing specific tests run. IF NONE: write \"None reported today.\")\n\n*⚠️ Faults & Diagnostics*\n(List any errors or fault triggers mentioned. IF NONE: write \"None reported today.\")\n\n*🗣️ Key Discussions & Interventions*\n(Detail the engineering discussion or component swaps. IF NONE: write \"No major technical discussions logged.\")\n\n*✅ Action Items / Next Steps*\n(List any explicit directives given. IF NONE: write \"No specific action items recorded.\")\n\nSTRICT RULES:\n- DO NOT hallucinate numbers, voltages, or faults. If it is not in the text, do not invent it.\n- Ignore casual greetings, emojis, or non-technical chatter.\n- Keep the language concise and highly technical.\n\n--- RAW CHAT LOG TO SUMMARIZE ---\n{{ $json.transcript }}"
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "typeVersion": 1.1,
+      "position": [
+        80,
+        0
+      ],
+      "id": "ac739f20-ef57-43a6-9002-6f968c1af4e2",
+      "name": "Summary AI",
+      "retryOnFail": true,
+      "maxTries": 4,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "googlePalmApi": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL",
+          "name": "Google Gemini API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE whatsapp_daily_logs \nSET processed = TRUE \nWHERE id IN ({{ $('Formatter & Gateway').item.json.idsList }});",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        640,
+        0
+      ],
+      "id": "ca7aa1ca-2069-4443-9016-38f30da7bca1",
+      "name": "Cleanup DB",
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://evolution_api:8080/message/sendText/wa-slack-bridge",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "number",
+              "value": "120363000000000013@g.us"
+            },
+            {
+              "name": "text",
+              "value": "=={{ $json.content.parts[0].text }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        432,
+        0
+      ],
+      "id": "f2de2b7d-ad73-4d26-9de3-b2723cb6fe09",
+      "name": "Summary to WhatsApp",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL",
+          "name": "Header Auth account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "The Fetcher",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "The Fetcher": {
+      "main": [
+        [
+          {
+            "node": "Formatter & Gateway",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Formatter & Gateway": {
+      "main": [
+        [
+          {
+            "node": "Summary AI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Summary AI": {
+      "main": [
+        [
+          {
+            "node": "Summary to WhatsApp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Summary to WhatsApp": {
+      "main": [
+        [
+          {
+            "node": "Cleanup DB",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false,
+    "timeSavedMode": "fixed",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "tags": []
+}

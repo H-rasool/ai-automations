@@ -1,0 +1,547 @@
+{
+  "name": "Admin Assistant and Smartsheet Update - Project B",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "project-b-admin",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -912,
+        592
+      ],
+      "id": "3e040209-bc5d-413b-8396-516f95de49bb",
+      "name": "Webhook",
+      "webhookId": "16403915-8a3c-592b-bc36-cb9d60372749"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.body.data.message.conversation }}",
+                    "rightValue": "Tid",
+                    "operator": {
+                      "type": "string",
+                      "operation": "contains"
+                    },
+                    "id": "af50af92-2636-48f1-8968-adc033155307"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Employee's update"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "08b9c1a9-b49a-4959-b979-289b33dd4d46",
+                    "leftValue": "={{ $json.body.data.key.remoteJid }}",
+                    "rightValue": "15550000001@s.whatsapp.net",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Admin Query"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "c0fc4d8a-dd30-42c5-be51-93941751ea3f",
+                    "leftValue": "",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Useless message"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        -656,
+        576
+      ],
+      "id": "87e9e601-0839-4fe8-965b-1e05618cf58d",
+      "name": "Switch"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        -192,
+        1216
+      ],
+      "id": "1eb592a7-ca24-4878-a625-959f71de6963",
+      "name": "No Operation, do nothing"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://middleware:5001/api/v1/update-row",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-KEY",
+              "value": "={{ $env.MIDDLEWARE_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "rowId",
+              "value": "={{ $json.rowId }}"
+            },
+            {
+              "name": "updates",
+              "value": "={{ $json.updates }}"
+            },
+            {
+              "name": "sheetId",
+              "value": "={{ $json.sheetId }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        528,
+        192
+      ],
+      "id": "7ad47b85-a658-45e9-8501-40e7ba6ab7dd",
+      "name": "Update sheet"
+    },
+    {
+      "parameters": {
+        "jsCode": "// 1. Access the correct data layer from Evolution API\nconst body = $json.body;\nconst data = body.data || body; // Handles both direct and nested data structures\n// 2. CORRECT SENDER EXTRACTION (Picks remoteJid instead of instance sender)\nconst senderRaw = data.key?.remoteJid || \"\";\nconst senderPhone = senderRaw.split('@')[0].replace(/\\D/g, ''); \n// 3. EXTRACT MESSAGE CONTENT\nconst messageText = data.message?.conversation || \n                    data.message?.extendedTextMessage?.text || \"\";\n// 4. PRECISION PERCENTAGE EXTRACTION\nconst percentRegex = /(\\d+)(?=\\s*%|\\s*percent)/i; \nconst percentMatch = messageText.match(percentRegex);\nconst percentage = percentMatch ? percentMatch[1] + \"%\" : null;\n// 5. PRECISION TASK ID EXTRACTION (Tid + Numbers)\nconst taskIdRegex = /(Tid\\d{1,6})/i;\nconst taskIdMatch = messageText.match(taskIdRegex);\nconst taskId = taskIdMatch ? taskIdMatch[0].toUpperCase() : null;\nreturn {\n  senderPhone,        // e.g. 15550000001\n  percentage,         // e.g., \"82%\"\n  taskId,             // e.g., \"TID0001\"\n  Comments: messageText, // The full message for your DB history\n  processedAt: new Date().toISOString()\n}; "
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -208,
+        96
+      ],
+      "id": "33e18b53-7887-4ae3-9eec-7435144781ae",
+      "name": "Extract data from msg"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT \n    id AS \"rowId\", \n    \"Task Name\",\n    \"Comments\", \n    \"Percentage Complete\"\nFROM public.\"task_master_project_b\"\nWHERE \n    -- This forces both the DB column AND your n8n input to lowercase\n    LOWER(TRIM(\"Task id\")) = LOWER(TRIM('{{ $json.taskId }}'))\n    OR \n    -- Backup check: matches if the user just sent the row number\n    id::text = TRIM('{{ $json.taskId }}')\nLIMIT 1;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        0,
+        192
+      ],
+      "id": "4715e216-1593-4b86-a325-4510875ab234",
+      "name": "Matching rows",
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// 1. Get the data from the previous nodes\nconst dbRow = $(\"Matching rows\").first().json;\nconst whatsappData = $(\"Extract data from msg\").first().json;\n\n// 2. Convert to a pure number (Removing the apostrophe issue)\n// If the user sent \"18\", this converts it to 0.18 which Smartsheet displays as 18%\nconst cleanPercentage = parseFloat(whatsappData.percentage) / 100;\n\nreturn {\n    sheetId: $env.SHEET_ID_PROJECT_B, // Smartsheet sheet ID (from environment)\n    rowId: dbRow.rowId, \n    updates: {\n        // Smartsheet expects decimals (0.5) for percentages (50%)\n        \"Percentage Complete\": cleanPercentage, \n        \"Comments\": whatsappData.Comments || \"Updated via WhatsApp\"\n    }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        272,
+        192
+      ],
+      "id": "35edaa9c-6e12-42b9-8f65-f452ebc9232d",
+      "name": "correct the format"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO public.task_history_project_b (\n    sender_phone, \n    task_id, \n    percentage_reported, \n    raw_message, \n    created_at\n)\nVALUES (\n    '{{ $json.senderPhone }}',\n    '{{ $json.taskId }}',\n    '{{ $json.percentage }}',\n    '{{ ($json.Comments || $json.raw_message || \"No Comment\").replace(/'/g, \"''\") }}',\n    NOW()\n);",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        0,
+        0
+      ],
+      "id": "d185a4c9-7c5c-49eb-a3f1-50e3eaed0a6c",
+      "name": "log user response",
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM public.\"task_master_project_b\";",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -208,
+        416
+      ],
+      "id": "a8afbd59-e864-47ea-9d77-f61c1c640c0a",
+      "name": "Fetch All data",
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM public.task_history_project_b ORDER BY created_at DESC;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -208,
+        592
+      ],
+      "id": "27c9bf49-039a-4561-960b-d8e2c23fbbe2",
+      "name": "Fetch Task history",
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "numberInputs": 4
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        192,
+        560
+      ],
+      "id": "730b6c3b-b35f-4075-bac7-c5a03f8a9864",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO public.admin_query_project_b (\n    admin_phone, \n    raw_query, \n    query_type, \n    searched_employee, \n    created_at\n)\nSELECT \n    '{{ $node[\"Message analyzer\"].json.adminContext.remoteJid }}', \n    '{{ ($node[\"Webhook\"].json.body.data.message.conversation || \"Command\").replace(/'/g, \"''\") }}', \n    '{{ $node[\"Message analyzer\"].json.adminContext.filter }}',\n    '{{ $node[\"Formatter node\"].json.targetName || \"None\" }}',\n    NOW()\nWHERE '{{ $node[\"Message analyzer\"].json.adminContext.isCommand }}' = 'false';",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        656,
+        800
+      ],
+      "id": "3f4e1826-b367-4902-8ff6-ae61e93ca9a0",
+      "name": "Admin Queries",
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "messages-api",
+        "instanceName": "whatsapp_1",
+        "remoteJid": "={{$json.remoteJid}}",
+        "messageText": "={{$json.text}}",
+        "options_message": {}
+      },
+      "type": "n8n-nodes-evolution-api-en.evolutionApi",
+      "typeVersion": 1,
+      "position": [
+        640,
+        592
+      ],
+      "id": "3c41fcb8-2c47-4c51-969b-114eb73ae085",
+      "name": "Send text",
+      "credentials": {
+        "evolutionApi": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL",
+          "name": "Evolution account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const allTasks = $input.all();\nconst context = allTasks.find(item => item.json.adminContext)?.json.adminContext;\n\n// 1. --- DATABASE CONTEXT MEMORY ---\n// Corrected to find searched_employee from previous interaction records\nconst dbFetchItem = allTasks.find(item => item.json.searched_employee !== undefined && item.json.searched_employee !== null);\nconst lastAuditedName = dbFetchItem ? dbFetchItem.json.searched_employee : \"\";\n\nif (!context) return [{ json: { text: \"🤖 *System Online.* Standby for command. Please provide an employee name to generate an audit.\" } }];\n\n// 2. --- ROBUST FALLBACK: Handling Invalid/Empty Searches ---\n// If the Message Analyzer found only noise, send your requested simple instruction\nif (context.intent === \"invalid_search\") {\n    return [{ \n        json: { \n            text: \"🔍 *I'm ready to help!* Just write the **Employee Name** (no extra text needed) and I will return all their progress details instantly.\",\n            remoteJid: context.remoteJid \n        } \n    }];\n}\n\n// 3. --- INITIAL AI WELCOME: Dynamic Greetings ---\nif (context.intent === \"menu\") {\n    const hour = new Date().getHours();\n    let timeGreeting = \"Hello\";\n    \n    if (hour >= 5 && hour < 12) timeGreeting = \"Good Morning\";\n    else if (hour >= 12 && hour < 17) timeGreeting = \"Good Afternoon\";\n    else if (hour >= 17 && hour < 21) timeGreeting = \"Good Evening\";\n    else timeGreeting = \"Working late? Hello\";\n\n    return [{ \n        json: { \n            text: `${timeGreeting}! I am your *PMO Intelligence Assistant* 🤖\\n━━━━━━━━━━━━\\nI am currently tracking *${allTasks.length}* total tasks across the organization.\\n\\n📍 *Quick Start:*\\nSimply type any **Employee Name** ony for example \"Alex\" and I will instantly list exactly what they are doing.\\n\\n*Example:* \"Alex\" or \"Jordan Lee?\"`,\n            remoteJid: context.remoteJid \n        } \n    }];\n}\n\n// 4. --- PRECISION NAME FILTERING ---\nlet allIndividualNames = [];\nallTasks.forEach(item => {\n    const names = (item.json[\"Assigned To\"] || \"\").split(',').map(n => n.trim()).filter(Boolean);\n    allIndividualNames.push(...names);\n});\n\nlet query = context.searchTerm.toLowerCase().trim();\nconst matchingUniqueNames = [...new Set(allIndividualNames.filter(name => name.toLowerCase().includes(query)))];\nconst exactMatch = matchingUniqueNames.find(name => name.toLowerCase() === query);\n\n// Resolve targetName based on current search or context memory\nlet targetName = exactMatch || (matchingUniqueNames.length === 1 ? matchingUniqueNames[0] : \"\");\n\nif (context.isCommand || targetName === \"\") {\n    targetName = lastAuditedName; \n}\n\n// 5. --- MULTIPLE MATCHES HANDLING ---\nif (matchingUniqueNames.length > 1 && !exactMatch && !context.isCommand) {\n    let aiResponse = `🔍 *I found ${matchingUniqueNames.length} profiles matching \"${context.searchTerm}\":*\\n\\n`;\n    matchingUniqueNames.forEach((name, i) => {\n        const count = allIndividualNames.filter(n => n === name).length;\n        aiResponse += `*${i + 1}️⃣ ${name}* (${count} Tasks)\\n`;\n    });\n    aiResponse += `\\n_Reply with the full name of the individual you wish to audit._`;\n    return [{ json: { text: aiResponse, remoteJid: context.remoteJid } }];\n}\n\n// 6. --- FINAL VALIDATION: No Name Found ---\n// Prevents \"undefined\" headers by sending a clear simple message\nif (!targetName || targetName === \"\") {\n    return [{ \n        json: { \n            text: \"❌ *Sorry for the inconvenience.* \\n\\nKindly just type the **Employee Name** only (e.g., Alex) and I will generate the audit for you.\", \n            remoteJid: context.remoteJid \n        } \n    }];\n}\n\n// 7. --- PERFORMANCE & ANALYTICS ENGINE ---\nconst employeeTasks = allTasks.filter(item => {\n    const names = (item.json[\"Assigned To\"] || \"\").split(',').map(n => n.trim());\n    return names.includes(targetName);\n});\n\nlet arrays = { active: [], pending: [], completed: [] };\nlet metrics = { totalPct: 0, responseCount: 0, lastMsg: \"None\", lastTime: \"N/A\" };\n\nemployeeTasks.forEach(t => {\n    const task = t.json;\n    const p = parseInt(task[\"Percentage Complete\"]) || 0;\n    metrics.totalPct += p;\n\n    const hasResponse = task[\"User Response\"] && task[\"User Response\"] !== \"null\" && task[\"User Response\"] !== \"N/A\";\n    if (hasResponse) metrics.responseCount++;\n\n    const startDate = (task[\"Start\"] || \"TBD\").toString().split('T')[0];\n    const finishDate = (task[\"Finish\"] || \"TBD\").toString().split('T')[0];\n    const duration = task[\"Duration\"] || \"N/A\";\n    \n    const taskDetail = `🔹 *${task[\"Task Name\"]}*\\n` +\n                       `   ┣ 📊 *${p}% Complete* | ⏳ *${duration}*\\n` +\n                       `   ┗ 📅 ${startDate} ➔ ${finishDate}`;\n\n    if (p === 100) arrays.completed.push(taskDetail);\n    else if (p === 0) arrays.pending.push(taskDetail);\n    else arrays.active.push(taskDetail);\n\n    if (task[\"User Response Time\"] && task[\"User Response Time\"] !== \"N/A\") {\n        metrics.lastTime = task[\"User Response Time\"];\n        metrics.lastMsg = task[\"User Response\"];\n    }\n});\n\nconst total = employeeTasks.length;\nconst avg = total > 0 ? (metrics.totalPct / total).toFixed(1) : 0;\nconst efficiency = avg > 80 ? \"⭐ Elite\" : avg > 40 ? \"📈 Stable\" : \"⚠️ Critical\";\n\n// 8. --- RESPONSE BRANCHING ---\nlet report = \"\";\nconst nextSteps = `━━━━━━━━━━━━━━━━━━━━\\n🔍 *Detailed Insight Needed?*\\n\\nType **Active**, **Completed**, or **Pending** for ${targetName.split(' ')[0]}.\\n\\n*Audit someone else?* Just provide their name and I'll share a detailed report of that employee.`;\n\nif (context.filter === \"active\") {\n    report = `🚀 *All the Active tasks displayed below for employee ${targetName}.*\\n` +\n             `━━━━━━━━━━━━━━━━━━━━\\n` +\n             `📍 *Total active tasks are (${arrays.active.length})*\\n\\n` + \n             (arrays.active.join('\\n\\n') || \"No active tasks in progress.\") + `\\n\\n${nextSteps}`;\n} else if (context.filter === \"completed\") {\n    report = `✅ *All the Completed tasks displayed below for employee ${targetName}.*\\n` +\n             `━━━━━━━━━━━━━━━━━━━━\\n` +\n             `📍 *Total completed tasks are (${arrays.completed.length})*\\n\\n` + \n             (arrays.completed.join('\\n\\n') || \"No completed tasks found.\") + `\\n\\n${nextSteps}`;\n} else if (context.filter === \"pending\") {\n    report = `💤 *All the Pending tasks displayed below for employee ${targetName}.*\\n` +\n             `━━━━━━━━━━━━━━━━━━━━\\n` +\n             `📍 *Total pending tasks are (${arrays.pending.length})*\\n\\n` + \n             (arrays.pending.join('\\n\\n') || \"No pending tasks found.\") + `\\n\\n${nextSteps}`;\n} else {\n    report = `📊 *EXECUTIVE AUDIT: ${targetName.toUpperCase()}*\\n`;\n    report += `━━━━━━━━━━━━━━━━━━━━\\n`;\n    report += `🏆 *Rating:* ${efficiency}\\n`;\n    report += `📈 *Avg. Completion:* ${avg}%\\n\\n`;\n    report += `✅ *Finished:* ${arrays.completed.length} / ${total}\\n`;\n    report += `⏳ *Active:* ${arrays.active.length}\\n`;\n    report += `💤 *Not Started:* ${arrays.pending.length}\\n\\n`;\n    report += `💬 *Engagement:* ${metrics.responseCount} Total Responses\\n`;\n    report += `🕒 *Last Feedback:* ${metrics.lastTime}\\n`;\n    report += `🗨️ *Latest Msg:* \"${metrics.lastMsg}\"\\n\\n`;\n\n    if (arrays.active.length > 0) {\n        report += `📝 *Top Active Focus (Latest 2):*\\n${arrays.active.slice(-2).join('\\n\\n')}\\n`;\n    }\n    report += `\\n${nextSteps}`;\n}\n\nreturn [{ json: { text: report, remoteJid: context.remoteJid, targetName: targetName } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        400,
+        592
+      ],
+      "id": "1e4cf798-1792-4462-a6d0-4b6a12ebc5d4",
+      "name": "Formatter node"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.item.json.body;\nconst data = body?.data;\nconst rawMsg = (data?.message?.conversation || data?.message?.extendedTextMessage?.text || \"\").trim();\n\n// 1. Clean characters but PRESERVE the apostrophe for step 6\nconst adminMsg = rawMsg.toLowerCase().replace(/[?.,!@#$%&()\\-=_+]/g, \"\").trim();\nconst remoteJid = data?.key?.remoteJid || $env.ADMIN_WHATSAPP_JID || \"\";\n\nlet filter = \"summary\";\nlet isCommand = false;\n\n// 2. Intent Detection\nconst activeKeywords = [\"active\", \"progress\", \"doing\", \"current\", \"working\"];\nconst completedKeywords = [\"completed\", \"done\", \"finished\", \"history\", \"did\", \"achieved\"];\nconst pendingKeywords = [\"pending\", \"todo\", \"backlog\", \"remaining\", \"left\", \"stuck\"];\n\nif (activeKeywords.some(kw => adminMsg.includes(kw))) filter = \"active\";\nelse if (completedKeywords.some(kw => adminMsg.includes(kw))) filter = \"completed\";\nelse if (pendingKeywords.some(kw => adminMsg.includes(kw))) filter = \"pending\";\n\n// 3. Command Detection\nconst quickCmds = [\"active\", \"progress\", \"completed\", \"done\", \"pending\", \"backlog\", \"todo\"];\nif (quickCmds.includes(adminMsg)) isCommand = true;\n\n// 4. Greeting Detection\nconst isGreeting = /^(hi|hello|hey|heya|hola|salam|asalam|morning|afternoon|evening|help|menu|start|what's up|whats\\s?up|yo|hlo|guyz|admin|assistant|pmo|bot|get\\s?started)/i.test(adminMsg);\n\n// 5. Conversational Noise\nconst conversationalNoise = /\\b(what|whats|is|any|task|tasks|did|do|of|for|check|show|audit|report|tell|let|me|the|current|about|everything|all|summary|list|info|status|progress|pending|completed|active|done|doing|working|on|please|can|could|you|provide|details|asking|give|fetch|get|look|up|at|searching|find|view|display|stats|metrics|performance|logs|records|updates|current|situation|update|position|where|is|how|many|are|left|stuck|finished|history|logs|auditing|monitoring|track|tracking|workload|assigned|to|individual|person|employee|member|user|profile|know|insight|overview|briefing|data|brief|review|agenda|item|items|action|activities|activity|daily|weekly|monthly|record|file|files|details|document|documentation|database|db|sheet|spreadsheet|table|row|entry|entries|assigned|responsibility|responsibilities|role|job|work|working|worked|project|projects|pmo|system|bot|assistant|hello|hi|hey|good|morning|evening|afternoon|salam|please|kindly|just|simply|actually|basically|specifically|want|need|looking|requesting|demand|require|query|search|identify|reveal|extract|pull|scan|read|analyze)\\b/g;\n\n// 6. IMPROVED Name Extraction: Handles 's, 't, 're, etc.\nlet searchTerm = (isCommand || isGreeting) ? \"\" : adminMsg\n    .replace(conversationalNoise, \" \")  \n    .replace(/'\\w+/g, \"\")                // NEW: Removes apostrophe AND any letters following it (e.g., 's, 't, 're)\n    .replace(/'/g, \"\")                   // Final cleanup for lone apostrophes\n    .replace(/\\s+/g, \" \")\n    .trim();\n\n// 7. Final Intent Routing\nlet finalIntent = isGreeting ? \"menu\" : (searchTerm === \"\" && !isCommand) ? \"invalid_search\" : \"employee_search\";\n\nreturn [{\n    json: {\n        adminContext: {\n            intent: finalIntent,\n            searchTerm: searchTerm || \"\",\n            filter,\n            remoteJid,\n            isCommand\n        }\n    }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -208,
+        784
+      ],
+      "id": "9b313663-cc31-443e-aa44-f71c3e07db06",
+      "name": "Message analyzer"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT searched_employee \nFROM public.admin_query_project_b \nWHERE admin_phone = '{{ $node[\"Webhook\"].json.body.data.key.remoteJid }}' \nAND searched_employee IS NOT NULL\nORDER BY created_at DESC \nLIMIT 1;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -208,
+        960
+      ],
+      "id": "ff5a18d1-ff4b-4f9a-a67d-a65bd5b7f1a4",
+      "name": "Fetch Admin query",
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL",
+          "name": "Postgres account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Switch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch": {
+      "main": [
+        [
+          {
+            "node": "Extract data from msg",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Message analyzer",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Fetch All data",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Fetch Task history",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Fetch Admin query",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No Operation, do nothing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract data from msg": {
+      "main": [
+        [
+          {
+            "node": "log user response",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Matching rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Matching rows": {
+      "main": [
+        [
+          {
+            "node": "correct the format",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "correct the format": {
+      "main": [
+        [
+          {
+            "node": "Update sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch All data": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Task history": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Formatter node",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Formatter node": {
+      "main": [
+        [
+          {
+            "node": "Send text",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Admin Queries",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Message analyzer": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Fetch Admin query": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 3
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "tags": []
+}

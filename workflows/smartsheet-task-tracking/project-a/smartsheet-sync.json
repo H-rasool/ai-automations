@@ -1,0 +1,187 @@
+{
+  "name": "Smartsheet Sync - Project A",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        0
+      ],
+      "id": "f3d00338-f8d2-45fd-87df-37bf2b16eb2a",
+      "name": "Schedule Trigger1"
+    },
+    {
+      "parameters": {
+        "url": "=http://middleware:5001/api/v1/extract-sheet?sheetId={{ $env.SHEET_ID_PROJECT_A }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-KEY",
+              "value": "={{ $env.MIDDLEWARE_API_KEY }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        480,
+        304
+      ],
+      "id": "d765f216-08ce-45f2-b0c5-d3634b38eecd",
+      "name": "Fetch Everything1"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// 100% Generic: Saves column names exactly as they are in Smartsheet\nconst clean = (val) => {\n    // Converts \"empty\" or blanks to SQL NULLs while keeping real data as-is\n    if (val === undefined || val === \"\" || val === \"empty\" || val === null) return null;\n    return val;\n};\n\nlet asIsData = {};\n\n// This loops through every key in the row and keeps the original name\nfor (const key of Object.keys($json)) {\n    asIsData[key] = clean($json[key]);\n}\n\nreturn asIsData;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        896,
+        0
+      ],
+      "id": "b1516f46-07e4-466c-872e-c4cfd4f93c44",
+      "name": "Code in JavaScript1"
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "data",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        704,
+        160
+      ],
+      "id": "028a6d46-2cdc-4daf-817e-ac667d0fd1d9",
+      "name": "Split Out1"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "TRUNCATE TABLE \"task_master_project_a\";",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        208,
+        160
+      ],
+      "id": "4e261e19-5772-4260-a7c6-45c333ec08b2",
+      "name": "Truncate previous table1",
+      "alwaysOutputData": false,
+      "retryOnFail": false,
+      "notesInFlow": false,
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO \"task_master_project_a\" (\n    \"rowId\", \"parentId\", \"rowNumber\", \"Hierarchy\", \"Critical Milestones\",\n    \"Dashboard Status\", \"Dashboard Data\", \"Task Name\", \"Start\", \"Finish\",\n    \"Duration\", \"Percentage Complete\", \"Predecessors\", \"Assigned To\",\n    \"Assigned to (% Allocation)\", \"TF_M1\", \"FF_M1\", \"Float\", \"People Hours\",\n    \"# Resources\", \"Comments\", \"Task id\"\n)\nVALUES (\n    {{ $json._metadata.rowId }}, \n    {{ $json._metadata.parentId || 'NULL' }}, \n    {{ $json._metadata.rowNumber }},\n    {{ $json[\"Hierarchy\"] ? \"'\" + $json[\"Hierarchy\"] + \"'\" : \"NULL\" }},\n    {{ $json[\"Critical Milestones\"] === \"Star\" || $json[\"Critical Milestones\"] === true ? \"true\" : \"false\" }},\n    {{ $json[\"Dashboard Status\"] && $json[\"Dashboard Status\"] !== \"null\" ? \"'\" + $json[\"Dashboard Status\"] + \"'\" : \"NULL\" }},\n    {{ $json[\"Dashboard Data\"] && $json[\"Dashboard Data\"] !== \"null\" ? \"'\" + $json[\"Dashboard Data\"] + \"'\" : \"NULL\" }},\n    '{{ $json[\"Task Name\"].replace(/'/g, \"''\") }}',\n    {{ $json[\"Start\"] ? \"'\" + $json[\"Start\"] + \"'::date\" : \"NULL\" }},\n    {{ $json[\"Finish\"] ? \"'\" + $json[\"Finish\"] + \"'::date\" : \"NULL\" }},\n    {{ $json[\"Duration\"] ? \"'\" + $json[\"Duration\"] + \"'\" : \"NULL\" }},\n    {{ parseFloat($json[\"Percentage Complete\"]) || 0 }},\n    {{ $json[\"Predecessors\"] && $json[\"Predecessors\"] !== \"null\" ? \"'\" + $json[\"Predecessors\"] + \"'\" : \"NULL\" }},\n    {{ $json[\"Assigned To\"] && $json[\"Assigned To\"] !== \"null\" ? \"'\" + $json[\"Assigned To\"] + \"'\" : \"NULL\" }},\n    {{ parseInt($json[\"Assigned to (% Allocation)\"]) || 0 }},\n    {{ parseFloat($json[\"TF_M1\"]) || 0 }},\n    {{ parseFloat($json[\"FF_M1\"]) || 0 }},\n    {{ parseFloat($json[\"Float\"]) || 0 }},\n    {{ parseFloat($json[\"People Hours\"]) || 0 }},\n    {{ parseInt($json[\"# Resources\"]) || 0 }},\n    {{ $json[\"Comments\"] && $json[\"Comments\"] !== \"null\" ? \"'\" + $json[\"Comments\"] + \"'\" : \"NULL\" }},\n    '{{ $json[\"Task id\"] }}'\n)\nON CONFLICT (\"rowId\") \nDO UPDATE SET\n    \"rowNumber\" = EXCLUDED.\"rowNumber\",\n    \"Dashboard Status\" = EXCLUDED.\"Dashboard Status\",\n    \"Percentage Complete\" = EXCLUDED.\"Percentage Complete\",\n    \"Finish\" = EXCLUDED.\"Finish\",\n    \"People Hours\" = EXCLUDED.\"People Hours\",\n    \"last_sync\" = CURRENT_TIMESTAMP;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1104,
+        160
+      ],
+      "id": "4cbddd7b-c796-4be2-bb6a-5e8dd18dc7ae",
+      "name": "Execute a SQL query1",
+      "alwaysOutputData": false,
+      "retryOnFail": false,
+      "notesInFlow": false,
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL",
+          "name": "Postgres account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Schedule Trigger1": {
+      "main": [
+        [
+          {
+            "node": "Truncate previous table1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Everything1": {
+      "main": [
+        [
+          {
+            "node": "Split Out1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Out1": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Truncate previous table1": {
+      "main": [
+        [
+          {
+            "node": "Fetch Everything1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "tags": []
+}

@@ -1,0 +1,150 @@
+{
+  "name": "Critical Path Calculator (experimental)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "triggerAtDay": [
+                1,
+                2,
+                4,
+                3,
+                5
+              ],
+              "triggerAtHour": 8
+            },
+            {
+              "field": "weeks",
+              "triggerAtDay": [
+                1,
+                2,
+                3,
+                4,
+                5
+              ],
+              "triggerAtHour": 17
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        144,
+        -16
+      ],
+      "id": "b17a53e9-d165-4092-b66a-c988050bfb2c",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://middleware:5001/api/v1/update-batch",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-KEY",
+              "value": "={{ $env.MIDDLEWARE_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"batchUpdates\": $json.batchUpdates } }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        848,
+        -16
+      ],
+      "id": "be3333b8-a354-4e46-acd7-4ca69367227e",
+      "name": "Update sheet"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM public.task_master_log;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        352,
+        -16
+      ],
+      "id": "1f0bde61-3f23-4511-8372-0b2587156ccd",
+      "name": "Get Sheet",
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "/**\n * MODULE-WISE CRITICAL PATH CALCULATION ENGINE\n * Logic: Total Float <= 0 AND Percent Complete < 100%\n * Dependencies: FS, SS, FF, SF and Lags\n * IMPORTANT:\n * - Uses parentId for module grouping\n * - Only returns rows where Critical status CHANGES (true ↔ false)\n * - Includes Task id (Tidxxxx) in output for easy identification\n */\nconst items = $input.all();\nconst rowByNumber = {};\nconst rowById = {};\nconst successors = {};\nconst outDegree = {};\n\n// ─── HELPERS ─────────────────────────────────────────────────────────────\nconst parseDurationToDays = (str) => parseFloat(String(str || '').replace(/[^\\d.-]/g, '')) || 0;\nconst parseLagToDays = (lagStr) => {\n    if (!lagStr) return 0;\n    const cleaned = lagStr.replace(/\\s/g, '');\n    const sign = cleaned.startsWith('-') ? -1 : 1;\n    return sign * (parseFloat(cleaned.replace(/[+-]/g, '')) || 0);\n};\nconst dateToMs = (date) => (date instanceof Date && !isNaN(date)) ? date.getTime() : 0;\nconst isWorkingDay = (date) => date.getDay() !== 0 && date.getDay() !== 6;\nconst subtractWorkingDays = (endDate, days) => {\n    if (!endDate || days <= 0) return endDate || new Date(0);\n    let current = new Date(endDate);\n    let remaining = days;\n    while (remaining > 0) {\n        current.setDate(current.getDate() - 1);\n        if (isWorkingDay(current)) remaining -= 1;\n    }\n    return current;\n};\n\n// ─── STEP 1: BUILD TASK DATA ─────────────────────────────────────────────\nitems.forEach(item => {\n    const data = item.json;\n    const rowId = String(data._metadata?.rowId || data.id);\n    const rowNumber = data._metadata?.rowNumber || (items.indexOf(item) + 1);\n    if (!rowId || !rowNumber) return;\n\n    const currentCritical = data[\"Critical\"] === true ||\n                           String(data[\"Critical\"] || '').toLowerCase() === 'true';\n\n    rowById[rowId] = {\n        id: rowId,\n        rowNumber,\n        taskId: data[\"Task id\"] || \"N/A\",  // ← Added Task id (Tidxxxx)\n        name: data[\"Task Name\"] || \"Unnamed\",\n        durationDays: parseDurationToDays(data.Duration),\n        percentComplete: parseFloat(String(data[\"Percentage Complete\"] || \"0\").replace('%', '')) || 0,\n        efDate: data.Finish ? new Date(data.Finish) : null,\n        preds: data.Predecessors ? String(data.Predecessors).split(/,\\s*/) : [],\n        lsDate: null,\n        lfDate: null,\n        currentCritical,\n        parentId: data._metadata?.parentId ? String(data._metadata.parentId) : null\n    };\n    rowByNumber[rowNumber] = rowById[rowId];\n    successors[rowId] = [];\n    outDegree[rowId] = 0;\n});\n\n// ─── STEP 2: BUILD SUCCESSORS ────────────────────────────────────────────\nObject.values(rowById).forEach(task => {\n    task.preds.forEach(p => {\n        const match = p.trim().match(/^(\\d+)\\s*([FS|SS|FF|SF]{2})?\\s*([+-]\\s*\\d*\\.?\\d*\\s*[dwhm]?)?.*$/i);\n        if (!match) return;\n        const predNum = parseInt(match[1], 10);\n        const predTask = rowByNumber[predNum];\n        if (!predTask) return;\n        successors[predTask.id].push({\n            to: task.id,\n            type: (match[2] || 'FS').toUpperCase(),\n            lagDays: parseLagToDays(match[3] || '0d')\n        });\n        outDegree[predTask.id]++;\n    });\n});\n\n// ─── STEP 3: GROUP BY MODULE (using parentId) ────────────────────────────\nconst modules = {};\nconst visited = new Set();\n\nfunction collectModule(rootTask) {\n    const moduleTasks = [rootTask];\n    visited.add(rootTask.id);\n    let q = [rootTask];\n    while (q.length > 0) {\n        const current = q.shift();\n        Object.values(rowById).forEach(task => {\n            if (task.parentId === current.id && !visited.has(task.id)) {\n                moduleTasks.push(task);\n                visited.add(task.id);\n                q.push(task);\n            }\n        });\n    }\n    return moduleTasks;\n}\n\n// Find root tasks (no parent or parent not in sheet)\nObject.values(rowById).forEach(task => {\n    if (!visited.has(task.id) && (!task.parentId || !rowById[task.parentId])) {\n        modules[task.id] = collectModule(task);\n    }\n});\n\n// Fallback: if no hierarchy detected, treat as one big module\nif (Object.keys(modules).length === 0) {\n    modules[\"global\"] = Object.values(rowById);\n}\n\n// ─── STEP 4: CALCULATE PER MODULE ────────────────────────────────────────\nconst batchUpdates = [];\n\nObject.keys(modules).forEach(moduleKey => {\n    const moduleTasks = modules[moduleKey];\n\n    // Module-specific end date\n    const moduleFinishMs = Math.max(...moduleTasks.map(t => dateToMs(t.efDate || new Date(0))));\n    const moduleFinishDate = new Date(moduleFinishMs);\n\n    // Reset LF for module\n    moduleTasks.forEach(t => t.lfDate = new Date(moduleFinishDate));\n\n    // Backward pass within module\n    let queue = moduleTasks.filter(t => outDegree[t.id] === 0).map(t => t.id);\n    while (queue.length > 0) {\n        const currentId = queue.shift();\n        const task = rowById[currentId];\n        task.lsDate = subtractWorkingDays(task.lfDate, task.durationDays);\n\n        task.preds.forEach(p => {\n            const match = p.trim().match(/^(\\d+)\\s*([FS|SS|FF|SF]{2})?\\s*([+-]\\s*\\d*\\.?\\d*\\s*[dwhm]?)?.*$/i);\n            if (!match) return;\n            const predNum = parseInt(match[1], 10);\n            const predTask = rowByNumber[predNum];\n            if (!predTask || !moduleTasks.find(t => t.id === predTask.id)) return;\n\n            const type = (match[2] || 'FS').toUpperCase();\n            const lag = parseLagToDays(match[3] || '0d');\n\n            let latestLF = new Date(task.lsDate);\n            if (type === 'FS') latestLF = subtractWorkingDays(task.lsDate, lag);\n            else if (type === 'SS') latestLF = addWorkingDays(subtractWorkingDays(task.lsDate, lag), predTask.durationDays);\n            else if (type === 'FF') latestLF = subtractWorkingDays(task.lfDate, lag);\n            else if (type === 'SF') latestLF = addWorkingDays(subtractWorkingDays(task.lfDate, lag), predTask.durationDays);\n\n            if (dateToMs(predTask.lfDate) > dateToMs(latestLF)) {\n                predTask.lfDate = new Date(latestLF);\n            }\n\n            outDegree[predTask.id]--;\n            if (outDegree[predTask.id] === 0) queue.push(predTask.id);\n        });\n    }\n\n    // Generate updates for changed tasks\n    moduleTasks.forEach(task => {\n        const tfDays = task.efDate && task.lfDate\n            ? Math.round((dateToMs(task.lfDate) - dateToMs(task.efDate)) / 86400000)\n            : null;\n\n        const isCritical = tfDays !== null && tfDays <= 0 && task.percentComplete < 100;\n\n        if (task.currentCritical !== isCritical) {\n            batchUpdates.push({\n                rowId: task.id,\n                taskId: task.taskId || \"N/A\",  // ← Added Task id (Tidxxxx)\n                updates: { \"Critical\": isCritical },\n                change: task.currentCritical ? \"true → false\" : \"false → true\",\n                DISPLAY_TaskName: task.name,\n                DISPLAY_TotalFloat: tfDays !== null ? tfDays + \"d\" : \"N/A\",\n                DISPLAY_PercentComplete: task.percentComplete + \"%\"\n            });\n        }\n    });\n});\n\n// ─── FINAL OUTPUT ────────────────────────────────────────────────────────\nreturn [{\n    json: {\n        batchUpdates,                    // only changed rows (with rowId & Critical)\n        shouldUpdate: batchUpdates.length > 0,\n        changedCount: batchUpdates.length,\n        timestamp: new Date().toISOString()\n    }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        592,
+        -16
+      ],
+      "id": "e52ef329-1d85-4d59-8e7f-c87212e0cebb",
+      "name": "calculate CP"
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Sheet": {
+      "main": [
+        [
+          {
+            "node": "calculate CP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "calculate CP": {
+      "main": [
+        [
+          {
+            "node": "Update sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "tags": []
+}

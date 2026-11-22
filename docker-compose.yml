@@ -1,0 +1,171 @@
+# =============================================================================
+# n8n AI Automations - full stack
+#
+#   docker compose up -d --build                    core stack
+#   docker compose --profile tools up -d            + pgAdmin
+#   docker compose --profile tunnel up -d           + Cloudflare quick tunnel (public webhooks)
+#
+# All configuration comes from .env (copy .env.example). Nothing secret lives here.
+# Service names double as Docker-network hostnames used inside the workflows:
+#   http://middleware:5001   http://evolution_api:8080   postgres   redis
+# =============================================================================
+name: ai-automations
+
+services:
+  # ---------------------------------------------------------------------------
+  # PostgreSQL - n8n's own DB, Evolution API's DB and the automation tables
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:${POSTGRES_TAG:-15-alpine}
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-evolution}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-evolutiondb}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      # creates the automation tables on the very first start only
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/10-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-evolution} -d ${POSTGRES_DB:-evolutiondb}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks: [automation]
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [automation]
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # Evolution API - self-hosted WhatsApp gateway
+  # ---------------------------------------------------------------------------
+  evolution_api:
+    image: evoapicloud/evolution-api:${EVOLUTION_TAG:-latest}
+    shm_size: "2gb"
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${EVOLUTION_HOST_PORT:-8080}:8080"
+    environment:
+      SERVER_URL: ${EXTERNAL_BASE_URL:-http://localhost:8080}
+      AUTHENTICATION_API_KEY: ${EVOLUTION_API_KEY:?Set EVOLUTION_API_KEY in .env}
+      DATABASE_ENABLED: "true"
+      DATABASE_PROVIDER: postgresql
+      DATABASE_CONNECTION_URI: postgresql://${POSTGRES_USER:-evolution}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-evolutiondb}?schema=public&connection_limit=20
+      CACHE_REDIS_ENABLED: "true"
+      CACHE_REDIS_URI: redis://redis:6379/6
+      CLIENT_NAME: ai_automations
+      # forward incoming messages (with media as base64) to the n8n webhooks
+      WEBHOOK_GLOBAL_ENABLED: "true"
+      WEBHOOK_EVENTS_MESSAGES_UPSERT: "true"
+      WEBHOOK_DATA_BASE64: "true"
+    volumes:
+      - evolution_instances:/evolution/instances
+    networks: [automation]
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # n8n - the workflow engine
+  # ---------------------------------------------------------------------------
+  n8n:
+    build: ./n8n
+    user: node
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${N8N_HOST_PORT:-5678}:5678"
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 4096M
+    environment:
+      # --- core -------------------------------------------------------------
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:?Set N8N_ENCRYPTION_KEY in .env}
+      WEBHOOK_URL: ${EXTERNAL_BASE_URL:-http://localhost:5678}/
+      GENERIC_TIMEZONE: ${GENERIC_TIMEZONE:-UTC}
+      TZ: ${GENERIC_TIMEZONE:-UTC}
+      N8N_COMMUNITY_PACKAGES_ENABLED: "true"
+      NODE_FUNCTION_ALLOW_EXTERNAL: axios
+      # --- database ---------------------------------------------------------
+      DB_TYPE: postgresdb
+      DB_POSTGRESDB_HOST: postgres
+      DB_POSTGRESDB_PORT: "5432"
+      DB_POSTGRESDB_DATABASE: ${POSTGRES_DB:-evolutiondb}
+      DB_POSTGRESDB_USER: ${POSTGRES_USER:-evolution}
+      DB_POSTGRESDB_PASSWORD: ${POSTGRES_PASSWORD}
+      # --- values the workflows read with {{ $env.NAME }} ---------------------
+      # n8n 2.x blocks $env in expressions/Code nodes unless this is false.
+      N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"
+      MIDDLEWARE_API_KEY: ${MIDDLEWARE_API_KEY:?Set MIDDLEWARE_API_KEY in .env}
+      SHEET_ID_PROJECT_A: ${SHEET_ID_PROJECT_A:-}
+      SHEET_ID_PROJECT_B: ${SHEET_ID_PROJECT_B:-}
+      ADMIN_WHATSAPP_JID: ${ADMIN_WHATSAPP_JID:-}
+    volumes:
+      - n8n_data:/home/node/.n8n
+    networks: [automation]
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # Middleware - Smartsheet gateway (see middleware/middleware.py)
+  # ---------------------------------------------------------------------------
+  middleware:
+    build: ./middleware
+    ports:
+      - "127.0.0.1:${MIDDLEWARE_HOST_PORT:-5001}:5001" # host access for testing only
+    environment:
+      SMARTSHEET_TOKEN: ${SMARTSHEET_TOKEN:-}
+      MIDDLEWARE_API_KEY: ${MIDDLEWARE_API_KEY:?Set MIDDLEWARE_API_KEY in .env}
+    networks: [automation]
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # Optional: pgAdmin  (docker compose --profile tools up -d)
+  # ---------------------------------------------------------------------------
+  pgadmin:
+    profiles: [tools]
+    image: dpage/pgadmin4
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@example.com}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:?Set PGADMIN_PASSWORD in .env}
+    ports:
+      - "127.0.0.1:${PGADMIN_HOST_PORT:-5050}:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    networks: [automation]
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # Optional: Cloudflare quick tunnel so Slack / WhatsApp can reach n8n
+  # (docker compose --profile tunnel up -d). The URL is random on every start:
+  # read it with `docker compose logs tunnel`, put it in EXTERNAL_BASE_URL and
+  # restart n8n + evolution_api. For anything permanent use a named tunnel or a domain.
+  # ---------------------------------------------------------------------------
+  tunnel:
+    profiles: [tunnel]
+    image: cloudflare/cloudflared:latest
+    command: tunnel --no-autoupdate --url http://n8n:5678
+    depends_on: [n8n]
+    networks: [automation]
+    restart: unless-stopped
+
+networks:
+  automation:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  pgadmin_data:
+  n8n_data:
+  evolution_instances:

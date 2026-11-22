@@ -1,0 +1,188 @@
+{
+  "name": "Smartsheet Sync - Project B",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 8
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        0
+      ],
+      "id": "2a4f7d8c-92df-43e4-b7a1-a88520e8da42",
+      "name": "Schedule Trigger1"
+    },
+    {
+      "parameters": {
+        "url": "=http://middleware:5001/api/v1/extract-sheet?sheetId={{ $env.SHEET_ID_PROJECT_B }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-KEY",
+              "value": "={{ $env.MIDDLEWARE_API_KEY }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        480,
+        304
+      ],
+      "id": "6e198459-67ad-4394-a983-9ee8c69f2485",
+      "name": "Fetch Everything1"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// 100% Generic: Saves column names exactly as they are in Smartsheet\nconst clean = (val) => {\n    // Converts \"empty\" or blanks to SQL NULLs while keeping real data as-is\n    if (val === undefined || val === \"\" || val === \"empty\" || val === null) return null;\n    return val;\n};\n\nlet asIsData = {};\n\n// This loops through every key in the row and keeps the original name\nfor (const key of Object.keys($json)) {\n    asIsData[key] = clean($json[key]);\n}\n\nreturn asIsData;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        896,
+        0
+      ],
+      "id": "a032a178-3e3c-4f51-b0cf-dd7b2b40c3b8",
+      "name": "Code in JavaScript1"
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "data",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        704,
+        160
+      ],
+      "id": "4e66a37e-e430-4c8c-837b-eb59f63a2b30",
+      "name": "Split Out1"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "TRUNCATE TABLE \"task_master_project_b\";",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        208,
+        160
+      ],
+      "id": "abaea506-340a-4f00-a316-9aa95d27ce98",
+      "name": "Truncate previous table1",
+      "alwaysOutputData": false,
+      "retryOnFail": false,
+      "notesInFlow": false,
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO \"task_master_project_b\" (\n    id, -- The actual Smartsheet Row ID\n    \"Task id\", \"Task Name\", \"Assigned To\", \"Status\", \"Percentage Complete\", \n    \"Start\", \"Finish\", \"Baseline Start\", \"Baseline Finish\", \n    \"Baseline Start2\", \"Baseline Finish2\", \"Duration\", \"Equipment\", \n    \"Supporting Resource\", \"Critical\", \"Allocation %\", \n    \"Allocation % (Supporting resource 1)\", \"Assigned to (Allocation %)\", \n    \"Predecessors\", \"Variance\", \"Variance2\", \n    \"Desing Updates/Reworks\", \"FW\", \"Units Timeline\", \"Comments\"\n)\nVALUES (\n{{ $json._metadata.rowId }}, -- Maps Smartsheet internal ID to DB Primary Key\n    '{{ $json[\"Task id\"] }}', \n    '{{ $json[\"Task Name\"] }}', \n    '{{ $json[\"Assigned To\"] }}', \n    '{{ $json[\"Status\"] }}', \n    '{{ $json[\"Percentage Complete\"] }}', \n    {{ $json[\"Start\"] ? \"'\" + $json[\"Start\"] + \"'::timestamp\" : \"NULL\" }}, \n    {{ $json[\"Finish\"] ? \"'\" + $json[\"Finish\"] + \"'::timestamp\" : \"NULL\" }}, \n    {{ $json[\"Baseline Start\"] ? \"'\" + $json[\"Baseline Start\"] + \"'::timestamp\" : \"NULL\" }}, \n    {{ $json[\"Baseline Finish\"] ? \"'\" + $json[\"Baseline Finish\"] + \"'::timestamp\" : \"NULL\" }}, \n    {{ $json[\"Baseline Start2\"] ? \"'\" + $json[\"Baseline Start2\"] + \"'::timestamp\" : \"NULL\" }}, \n    {{ $json[\"Baseline Finish2\"] ? \"'\" + $json[\"Baseline Finish2\"] + \"'::timestamp\" : \"NULL\" }}, \n    '{{ $json[\"Duration\"] }}', \n    '{{ $json[\"Equipment\"] }}', \n    '{{ $json[\"Supporting Resource\"] }}', \n    {{ $json[\"Critical\"] }}, \n    '{{ $json[\"Allocation %\"] }}',\n    '{{ $json[\"Allocation % (Supporting resource 1)\"] }}',\n    '{{ $json[\"Assigned to (Allocation %)\"] }}',\n    '{{ $json[\"Predecessors\"] }}',\n    '{{ $json[\"Variance\"] }}',\n    '{{ $json[\"Variance2\"] }}',\n    '{{ $json[\"Desing Updates/Reworks\"] }}',\n    '{{ $json[\"FW\"] }}',\n    '{{ $json[\"Units Timeline\"] }}',\n    '{{ $json[\"Comments\"] }}'\n  )",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1104,
+        160
+      ],
+      "id": "8ad3c23a-61f3-476b-be8a-7eb33b7f66cf",
+      "name": "Execute a SQL query1",
+      "alwaysOutputData": false,
+      "retryOnFail": false,
+      "notesInFlow": false,
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL",
+          "name": "Postgres account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Schedule Trigger1": {
+      "main": [
+        [
+          {
+            "node": "Truncate previous table1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Everything1": {
+      "main": [
+        [
+          {
+            "node": "Split Out1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Out1": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Truncate previous table1": {
+      "main": [
+        [
+          {
+            "node": "Fetch Everything1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "tags": []
+}

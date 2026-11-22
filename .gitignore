@@ -1,0 +1,64 @@
+# --- Secrets & local configuration (never commit) ---------------------------
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+credentials.json
+*credentials*.json
+service-account*.json
+client_secret*.json
+token.json
+secrets/
+*.secret
+
+# --- n8n / WhatsApp / database runtime data ---------------------------------
+n8n_data/
+n8n_data_*/
+.n8n/
+evolution_instances/
+evolution_store/
+postgres_data/
+pgadmin_data/
+data/
+binaryData/
+*.log
+n8nEventLog*
+*.sql
+!database/schema.sql
+*.dump
+*.sqlite
+*.sqlite3
+
+# --- Private exports & backups (keep real workflow exports out of the repo) --
+exports/
+backups/
+*.bak
+*.backup
+workflows-private/
+
+# --- Binaries ---------------------------------------------------------------
+*.exe
+cloudflared*
+
+# --- Python -----------------------------------------------------------------
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.coverage
+htmlcov/
+*.egg-info/
+
+# --- Node -------------------------------------------------------------------
+node_modules/
+
+# --- OS / editors -----------------------------------------------------------
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
